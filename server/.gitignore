@@ -1,0 +1,7 @@
+# 运行时数据与构建产物不入库（design.md §10：.env 必须忽略，仓库不得出现 key）
+data/projects.json
+data/projects.json.tmp
+node_modules/
+dist/
+.env
+.env.*

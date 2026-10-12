@@ -1,0 +1,21 @@
+/* design.md §7：深色工作室风格设计变量（唯一来源） */
+:root {
+  --bg: #17181C;            /* 底色 */
+  --panel: #1F2127;         /* 面板 */
+  --panel-2: #262932;       /* 面板内嵌块 */
+  --line: #32353F;          /* 分隔线/描边 */
+  --text: #E8E9ED;
+  --text-dim: #9DA1AC;
+  --accent: #F5A623;        /* 主强调 */
+  --accent-ink: #21150A;
+  --ok: #35C48D;            /* 成功 */
+  --danger: #E5484D;        /* 高危 */
+  --paper: #FDFDFB;         /* 画布白纸色 */
+  --radius: 10px;
+  --radius-sm: 6px;
+  --shadow: 0 8px 28px rgba(0, 0, 0, 0.42);
+  --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.32);
+  --topbar-h: 56px;
+  --toolbar-w: 64px;
+  --font: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', 'Microsoft YaHei', sans-serif;
+}

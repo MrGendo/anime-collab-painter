@@ -1,0 +1,277 @@
+/* Wave 2C：AI 协作面板（评估/建议/生成/对比）+ 画布区域高亮 + 通用模态（色值只取 variables.css） */
+
+/* ---- 通用小件（面板与历史条共用） ---- */
+.btn-primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+  font-weight: 600;
+  padding: 7px 14px;
+  font-size: 13px;
+}
+.btn-primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 86%, white); }
+.btn-primary.wide { width: 100%; }
+.btn-danger { color: var(--danger); border-color: var(--danger); padding: 7px 14px; font-size: 13px; }
+.btn-danger:hover:not(:disabled) { background: color-mix(in srgb, var(--danger) 12%, transparent); }
+
+.spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid color-mix(in srgb, currentColor 30%, transparent);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  display: inline-block;
+  vertical-align: -2px;
+  margin-right: 6px;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.dim-note { font-size: 12px; color: var(--text-dim); margin-top: 8px; line-height: 1.6; }
+
+.error-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-sm);
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.error-banner button { color: var(--danger); border-color: var(--danger); padding: 3px 10px; font-size: 12px; flex-shrink: 0; }
+
+/* ---- 面板骨架 ---- */
+.ai-panel .panel-sub { font-weight: 400; color: var(--text-dim); font-size: 11px; margin-left: 8px; }
+.ai-section { padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.ai-section h3 { font-size: 13px; margin-bottom: 8px; color: var(--text); display: flex; align-items: baseline; }
+.stage-tip { font-size: 12px; color: var(--text-dim); margin-bottom: 10px; }
+
+/* ---- 自动评估呼吸灯提示条 ---- */
+.hint-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 14px 0;
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+}
+.hint-pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+  animation: breathe-accent 1.6s ease-in-out infinite;
+}
+@keyframes breathe-accent {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 50%, transparent); }
+  50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 0%, transparent); }
+}
+.hint-text { flex: 1; line-height: 1.5; }
+.hint-bar button { padding: 4px 10px; font-size: 12px; flex-shrink: 0; }
+.hint-close { border: none; background: transparent; color: var(--text-dim); padding: 0 2px; font-size: 15px; }
+
+/* ---- 评估结果 ---- */
+.eval-result { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.eval-meta { font-size: 11px; color: var(--text-dim); }
+.score-row { display: flex; align-items: center; gap: 10px; }
+.score-num { font-size: 22px; font-weight: 700; width: 46px; text-align: right; font-variant-numeric: tabular-nums; }
+.score-num.good { color: var(--ok); }
+.score-num.mid { color: var(--accent); }
+.score-num.bad { color: var(--danger); }
+.score-bar { flex: 1; height: 8px; background: var(--panel-2); border-radius: 999px; overflow: hidden; }
+.score-fill { height: 100%; border-radius: 999px; transition: width 0.5s ease; }
+.score-fill.good { background: var(--ok); }
+.score-fill.mid { background: var(--accent); }
+.score-fill.bad { background: var(--danger); }
+.eval-summary { font-size: 12px; line-height: 1.6; }
+.strength-list { list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.strength-list li { font-size: 12px; color: var(--ok); line-height: 1.5; }
+.issue-list { display: flex; flex-direction: column; gap: 6px; }
+.issue-item {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  padding: 6px 8px;
+  background: var(--panel-2);
+  border-radius: var(--radius-sm);
+}
+.issue-title { color: var(--text); font-weight: 500; }
+.issue-detail { color: var(--text-dim); flex-basis: 100%; line-height: 1.5; }
+
+/* ---- severity 徽章 / kind chip / 实测数字高亮 ---- */
+.sev-badge { font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 999px; border: 1px solid; flex-shrink: 0; }
+.sev-high { color: var(--danger); border-color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
+.sev-medium { color: var(--accent); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.sev-low { color: var(--text-dim); border-color: var(--line); }
+.kind-chip {
+  font-size: 11px;
+  color: var(--text-dim);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 1px 8px;
+  white-space: nowrap;
+}
+.num-hl {
+  color: var(--accent);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-radius: 3px;
+  padding: 0 2px;
+}
+
+/* ---- 建议卡片 ---- */
+.sugg-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  padding: 10px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.sugg-card:hover { border-color: var(--accent); }
+.sugg-card.pinned { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.sugg-card.rejected { opacity: 0.55; }
+.sugg-head { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+.sugg-title { font-size: 13px; font-weight: 600; }
+.sugg-line { font-size: 12px; color: var(--text-dim); line-height: 1.6; margin-bottom: 4px; }
+.sugg-line b {
+  color: var(--text);
+  font-weight: 500;
+  font-size: 11px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 0 4px;
+  margin-right: 6px;
+}
+.region-tag {
+  font-size: 11px;
+  color: var(--accent);
+  border: 1px dashed var(--accent);
+  border-radius: 999px;
+  padding: 1px 8px;
+  display: inline-block;
+  margin-bottom: 6px;
+}
+.draft-box { margin-bottom: 8px; }
+.draft-box summary { font-size: 11px; color: var(--text-dim); cursor: pointer; user-select: none; }
+.draft-box p {
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.6;
+  margin-top: 6px;
+  white-space: pre-wrap;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 8px;
+  max-height: 140px;
+  overflow-y: auto;
+}
+.sugg-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.sugg-actions button { font-size: 12px; padding: 4px 12px; }
+.dec-chip { font-size: 11px; padding: 3px 10px; border-radius: 999px; }
+.dec-chip.accepted { color: var(--ok); border: 1px solid var(--ok); background: color-mix(in srgb, var(--ok) 10%, transparent); }
+.dec-chip.rejected { color: var(--text-dim); border: 1px solid var(--line); }
+.adjust-editor { margin-top: 8px; }
+.adjust-actions { display: flex; gap: 6px; margin-top: 6px; }
+.adjust-actions button { font-size: 12px; padding: 5px 12px; }
+
+/* ---- 生成区 ---- */
+.gen-source { margin-bottom: 10px; }
+.chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip-btn {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  color: var(--text-dim);
+  max-width: 148px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chip-btn.active { color: var(--accent); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.scope-select { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-bottom: 10px; }
+.scope-select button { font-size: 12px; padding: 5px 0; }
+.scope-select button.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+.prompt-editor { resize: vertical; min-height: 84px; font-size: 12px; line-height: 1.6; }
+.gen-tools { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 8px 0; }
+.gen-tools > button { font-size: 12px; padding: 4px 10px; }
+.sim-fail { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); cursor: pointer; }
+.sim-fail input { width: auto; accent-color: var(--danger); }
+
+/* ---- 画布区域联动高亮（severity 决定色调） ---- */
+.region-overlay {
+  position: fixed;
+  z-index: 40;
+  pointer-events: none;
+  border-radius: 4px;
+  border: 2px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  transition: left 0.12s ease, top 0.12s ease, width 0.12s ease, height 0.12s ease;
+}
+.region-overlay.tone-high { border-color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
+.region-overlay.tone-medium { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.region-overlay.tone-low { border-color: var(--text-dim); background: color-mix(in srgb, var(--text-dim) 14%, transparent); }
+.region-overlay.tone-base { border-color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); }
+
+/* ---- 模态（对比视图 / 快照大图共用） ---- */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  backdrop-filter: blur(2px);
+  display: grid;
+  place-items: center;
+}
+.modal {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  max-width: min(1080px, 92vw);
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.modal-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+  font-weight: 600;
+}
+.modal-head .hint-close { margin-left: auto; }
+.modal-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--line); }
+.modal-foot button { padding: 8px 18px; font-size: 13px; }
+
+/* 对比视图：左右并排 原画布 vs 修正版 */
+.compare-body { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding: 16px; overflow: auto; }
+.compare-fig { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.compare-fig img {
+  width: 100%;
+  aspect-ratio: 480 / 300;
+  object-fit: contain;
+  background: var(--paper);
+  border-radius: var(--radius-sm);
+  display: block;
+}
+.compare-fig figcaption { font-size: 12px; color: var(--text-dim); line-height: 1.6; display: flex; flex-direction: column; gap: 4px; }
+.compare-note { color: var(--accent); font-size: 11px; }

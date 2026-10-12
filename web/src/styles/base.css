@@ -1,0 +1,57 @@
+/* 全局 reset 与工作台骨架布局 */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body, #root { height: 100%; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font-family: inherit;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { opacity: 0.38; cursor: not-allowed; }
+
+input, textarea {
+  font-family: inherit;
+  font-size: 14px;
+  background: #14161A;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  width: 100%;
+}
+input:focus, textarea:focus { outline: none; border-color: var(--accent); }
+
+.app-shell {
+  display: grid;
+  height: 100%;
+  /* 历史行 74px：容纳缩略图与 round/stage 标签（Wave 2C 由 56px 调整） */
+  grid-template-rows: var(--topbar-h) 1fr auto 74px;
+  grid-template-columns: var(--toolbar-w) 1fr 340px;
+  grid-template-areas:
+    "topbar topbar topbar"
+    "toolbar canvas ai"
+    "toolbar statusbar ai"
+    "toolbar history ai";
+  gap: 0;
+}
+
+.main-area { grid-area: canvas; display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 18px 20px 10px; }
+.ai-area { grid-area: ai; padding: 14px; min-height: 0; }
+/* Wave 2C：槽位内横向排布 StatusBar（占满）+ EvalHint（右侧） */
+.statusbar-slot { grid-area: statusbar; display: flex; align-items: stretch; }
+.statusbar-slot .statusbar { flex: 1; }
+.history-slot { grid-area: history; min-height: 0; }

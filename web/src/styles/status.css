@@ -1,0 +1,27 @@
+/* Wave 2C：toast 动效与状态条「可评估提示」（新选择器；色值只取 variables.css） */
+
+/* toast 进入动效（ToastHost 布局样式在 workspace.css，此处只补动画，无属性冲突） */
+.toast { animation: toast-in 0.18s ease-out; }
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(12px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* 可评估提示：画布 empty=false 时绿点呼吸 */
+.eval-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-dim);
+  padding: 0 16px;
+  border-left: 1px solid var(--line);
+  white-space: nowrap;
+}
+.eval-hint-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-dim); opacity: 0.5; flex-shrink: 0; }
+.eval-hint.ready { color: var(--ok); }
+.eval-hint.ready .eval-hint-dot { background: var(--ok); opacity: 1; animation: breathe-ok 2s ease-in-out infinite; }
+@keyframes breathe-ok {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 45%, transparent); }
+  50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--ok) 0%, transparent); }
+}
