@@ -1,4 +1,7 @@
-# 动画 AI 协作绘画编辑器（Anime AI Collab Painter）
+# 动画 AI 协作绘画编辑器（Anime Collab Painter）
+
+仓库：https://github.com/MrGendo/anime-collab-painter
+公网演示：https://feat-actively-testament-occupations.trycloudflare.com
 
 动画创作工作室风格的 Web 应用，演示「**人工主导、AI 辅助、用户确认**」的人机协作绘画闭环：
 
