@@ -33,15 +33,25 @@ function draft(meta: ProjectMeta, scope: keyof typeof SCOPE_QUALIFIER, body: str
 }
 
 // overall.score 公式（design.md §5.2 要求写明）：
-//   score = wCov*min(coverage/30,1)            覆盖率：30% 即满档，画得越多越实
-//         + 25*居中度                          1-2*max(|cx-0.5|,|cy-0.5|)，质心贴中心拿满
-//         + wCol*min(distinctColors/5,1)       色彩：5 种主色满档；sketch/lineart 折半（此时色数无意义，权重让给覆盖率）
-//         + 15*阶段推进分                      (stageIndex+1)/4，越接近 detail 越高
+//   score = wCov*coverageScore                       覆盖率：欠画(<5%)扣分；>70% 时按色数分流——
+//                                                  多色(≥3)满幅=完整场景不罚（画满背景是合法完成态）；
+//                                                  近单色(≤2)满幅=平涂刷分，衰减到 0.35（涂满≠画完）
+//         + 25*居中度                                1-2*max(|cx-0.5|,|cy-0.5|)，质心贴中心拿满
+//         + wCol*min(distinctColors/5,1)             色彩：5 种主色满档；sketch/lineart 折半（此时色数无意义，权重让给覆盖率）
+//         + 15*阶段推进分                            (stageIndex+1)/4，越接近 detail 越高
 //   其中 sketch/lineart: wCov=50,wCol=10；color/detail: wCov=40,wCol=20（合计恒为 100）。
+function coverageScore(coverage: number, distinctColors: number): number {
+  // 0%→0；5%→0.25；25%~70%→1.0 平台；>70%：多色保持 1.0（合法满幅场景），近单色衰减（85%→0.6，100%→0.35）
+  if (coverage < 5) return coverage / 20;
+  if (coverage <= 70) return 0.25 + (0.75 * Math.min(coverage - 5, 20)) / 20;
+  if (distinctColors >= 3) return 1;                     // 满幅但多色分层：完整场景，不罚
+  if (coverage <= 85) return 1 - 0.4 * (coverage - 70) / 15;
+  return Math.max(0.35, 0.6 - 0.25 * (coverage - 85) / 15);
+}
 function computeScore(m: AnalyzerMetrics, stage: Stage): number {
   const early = stage === 'sketch' || stage === 'lineart';
   const wCov = early ? 50 : 40, wCol = early ? 10 : 20;
-  const cov = Math.min(m.coverage / 30, 1);
+  const cov = coverageScore(m.coverage, m.distinctColors);
   const center = m.centroid ? Math.max(0, 1 - 2 * Math.max(Math.abs(m.centroid.x - 0.5), Math.abs(m.centroid.y - 0.5))) : 0;
   const col = Math.min(m.distinctColors / 5, 1);
   const prog = (STAGE_ORDER.indexOf(stage) + 1) / 4;
@@ -124,6 +134,21 @@ function evaluateRules(m: AnalyzerMetrics, meta: ProjectMeta, stage: Stage, stro
         reason: '无色彩分层时，光源方向与体积感都无法传达',
         fix: `按角色设定铺 3~4 个主色块（固有色/阴影/高光），先把主体明暗分开`,
         promptDraft: draft(meta, 'color', `去重色数实测 ${m.distinctColors}。请为画面建立 3~4 色基础配色：主体固有色、暗部、高光各一`),
+      },
+    );
+  }
+
+  // R4b color/detail 阶段整幅平涂：覆盖率≥90% 且色数≤2——用刷背景的方式骗不过覆盖率
+  if ((stage === 'color' || stage === 'detail') && m.coverage >= 90 && m.distinctColors <= 2) {
+    add(
+      { kind: 'composition', severity: 'high', title: '整幅平涂（无构图）', detail: `覆盖率 ${m.coverage}% 但去重色数仅 ${m.distinctColors}——单一色块铺满画布，没有主体/背景的构图分层`, region: { x: 0.333, y: 0.333, w: 0.334, h: 0.334 } },
+      {
+        kind: 'composition', scope: 'global', severity: 'high',
+        title: '建立主体与背景的分层', problem: `画面被单一色块覆盖（覆盖率 ${m.coverage}%、色数 ${m.distinctColors}），不构成可评估的构图`,
+        reason: '涂满画布不等于画完：没有主体剪影与背景的区域分化，后续姿态/色彩/细化建议都无法锚定',
+        fix: '先在中心格建立主体剪影（占 25%~40%），再用对比色区分背景与地面，覆盖率保持在 40%~70% 的构图合理区间',
+        region: { x: 0.333, y: 0.333, w: 0.334, h: 0.334 },
+        promptDraft: draft(meta, 'global', `实测覆盖率 ${m.coverage}% 但色数仅 ${m.distinctColors}，属整幅平涂。请重建画面分层：中心格主体剪影 + 背景对比色`),
       },
     );
   }

@@ -32,3 +32,7 @@
 - 公网隧道：cloudflared → https://feat-actively-testament-occupations.trycloudflare.com（外网 health/html/evaluate/generate 实测 200；隧道依赖本机进程存活）
 - GitHub：https://github.com/MrGendo/anime-collab-painter （main，README/REPORT/design/源码/截图逐文件匿名 raw 200）
 - 提交前扫描：无 API key/个人信息（唯一命中为测试里的泄露检测断言）
+
+## 交付后修正（10-13）
+
+- 用户实测发现：单色平涂整幅可得 80 分（覆盖率线性满档被刷分）。修复（mock.ts）：①覆盖率分改倒 U 型，>70% 按色数分流——多色(≥3)满幅=完整场景不罚，近单色(≤2)满幅衰减到 0.35；②新增规则 R4b「整幅平涂（无构图）」high 级问题。平涂实测 80→54，差涂鸦 16、好图 96 均无回归；新增针对性测试，37/37 绿。README 评分表已加平涂案例。

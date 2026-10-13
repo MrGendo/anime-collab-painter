@@ -109,6 +109,25 @@ test('overall.score 公式输出在 0..100 且随内容增加而升高', async (
   assert.ok(rich > empty, `rich=${rich} empty=${empty}`);
 });
 
+test('单色平涂整幅（覆盖率100%/色数1）→ 低分 + high「整幅平涂」问题，不得高于完整构图', async () => {
+  const p = blankPng();
+  fillRect(p, 0, 0, 480, 300, [130, 150, 170]);          // 单色铺满
+  const ev = await eval0(toBuf(p), 'color');
+  assert.ok(ev.overall.score < 60, `flat score=${ev.overall.score} 应低于 60`);
+  const iss = ev.issues.find(i => i.title === '整幅平涂（无构图）');
+  assert.ok(iss, JSON.stringify(ev.issues.map(i => i.title)));
+  assert.equal(iss!.severity, 'high');
+  assert.match(iss!.detail, /覆盖率 100%/);
+  // 对照：多色分区构图（同覆盖率量级）分数必须显著更高
+  const q = blankPng();
+  fillRect(q, 0, 0, 480, 180, [255, 196, 150]);          // 天空
+  fillRect(q, 0, 180, 480, 120, [214, 170, 120]);        // 地面
+  fillRect(q, 200, 80, 80, 160, [200, 50, 60]);          // 居中主体
+  fillRect(q, 30, 120, 50, 40, [150, 128, 120]);         // 侧景
+  const good = await eval0(toBuf(q), 'color');
+  assert.ok(good.overall.score > ev.overall.score + 15, `good=${good.overall.score} flat=${ev.overall.score} 差距应>15`);
+});
+
 test('确定性：同一输入两次评估 JSON 完全相等', async () => {
   const p = blankPng();
   fillRect(p, 0, 0, 200, 300, [10, 120, 210]);
