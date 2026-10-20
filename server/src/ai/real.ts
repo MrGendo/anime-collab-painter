@@ -22,7 +22,14 @@ const DEFAULT_LLM_BASE = 'https://api.openai.com/v1';
 const DEFAULT_IMG_BASE = 'https://api.openai.com/v1';
 const DEFAULT_LLM_MODEL = 'gpt-4o-mini';   // 需同时支持图片输入与 json_object 的入门档
 const DEFAULT_IMG_MODEL = 'gpt-image-1';
-const DEFAULT_TIMEOUT_MS = 60_000;         // 与路由层 REQUEST_TIMEOUT_MS 对齐（§8）
+const DEFAULT_TIMEOUT_MS = Number(process.env.REQUEST_TIMEOUT_MS ?? 60_000);  // 与路由层对齐（§8）；真实多模态评估常需 60s+
+
+/** LLM 协议自动探测：base url 含 /anthropic 则走 Anthropic messages 协议（GLM coding plan 额度在此端点），
+ *  否则走 OpenAI chat/completions。两种协议产出同构 payload/解析路径。 */
+const llmProtocol = (): 'anthropic' | 'openai' => {
+  const base = process.env.LLM_BASE_URL ?? DEFAULT_LLM_BASE;
+  return base.includes('/anthropic') ? 'anthropic' : 'openai';
+};
 
 /** 测试注入点：timeoutMs 可压到毫秒级验证超时路径 */
 export interface RealProviderOptions { timeoutMs?: number }
@@ -195,30 +202,63 @@ export function createRealProvider(opts: RealProviderOptions = {}): AIProvider {
         ...names.map(n => `【${n}】\n${TEMPLATES[n].user(ctx)}`),
         '请结合上方实测数据与附图逐维度评估，输出符合约定结构的 JSON。',
       ].join('\n\n');
-      const payload = {
-        model: process.env.LLM_MODEL ?? DEFAULT_LLM_MODEL,
-        response_format: { type: 'json_object' },
-        messages: [
-          { role: 'system', content: system },
-          { role: 'user', content: [
-            { type: 'text', text: userText },
-            { type: 'image_url', image_url: { url: `data:image/png;base64,${input.image.toString('base64')}` } },
-          ] },
-        ],
-      };
-      const res = await fetchWithTimeout(`${llmBase()}/chat/completions`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', authorization: bearer(process.env.LLM_API_KEY) },
-        body: JSON.stringify(payload),
-      }, timeoutMs, 'LLM');
-      await assertOk(res, 'LLM chat/completions');
-      const data = await res.json() as { choices?: { message?: { content?: unknown } }[] };
-      const c = data.choices?.[0]?.message?.content;
-      // 多模态回复的 content 偶为数组（分段文本块），统一拍平成字符串
-      const text = typeof c === 'string' ? c
-        : Array.isArray(c)
-          ? c.map(p => (p && typeof p === 'object' && (p as { type?: string }).type === 'text' ? String((p as { text?: unknown }).text ?? '') : '')).join('')
-          : '';
+      let text: string;
+      if (llmProtocol() === 'anthropic') {
+        // Anthropic messages 协议（GLM coding plan 额度端点）：system 独立字段、图片用 source 块、
+        // 无 response_format —— JSON 约束已写进 system 文本（JSON_SPEC），靠 parseModelJson 健壮解析兜底
+        const res = await fetchWithTimeout(`${llmBase()}/v1/messages`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-api-key': String(process.env.LLM_API_KEY ?? ''),
+            'anthropic-version': '2023-06-01',
+          },
+          body: JSON.stringify({
+            model: process.env.LLM_MODEL ?? DEFAULT_LLM_MODEL,
+            max_tokens: 4096,
+            system,
+            messages: [{
+              role: 'user',
+              content: [
+                { type: 'text', text: userText },
+                { type: 'image', source: { type: 'base64', media_type: 'image/png', data: input.image.toString('base64') } },
+              ],
+            }],
+          }),
+        }, timeoutMs, 'LLM');
+        await assertOk(res, 'LLM anthropic messages');
+        const data = await res.json() as { content?: { type?: string; text?: string }[] };
+        text = (data.content ?? [])
+          .filter(p => p.type === 'text')
+          .map(p => p.text ?? '')
+          .join('');
+      } else {
+        // OpenAI chat/completions（多模态 + response_format json_object）
+        const payload = {
+          model: process.env.LLM_MODEL ?? DEFAULT_LLM_MODEL,
+          response_format: { type: 'json_object' },
+          messages: [
+            { role: 'system', content: system },
+            { role: 'user', content: [
+              { type: 'text', text: userText },
+              { type: 'image_url', image_url: { url: `data:image/png;base64,${input.image.toString('base64')}` } },
+            ] },
+          ],
+        };
+        const res = await fetchWithTimeout(`${llmBase()}/chat/completions`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', authorization: bearer(process.env.LLM_API_KEY) },
+          body: JSON.stringify(payload),
+        }, timeoutMs, 'LLM');
+        await assertOk(res, 'LLM chat/completions');
+        const data = await res.json() as { choices?: { message?: { content?: unknown } }[] };
+        const c = data.choices?.[0]?.message?.content;
+        // 多模态回复的 content 偶为数组（分段文本块），统一拍平成字符串
+        text = typeof c === 'string' ? c
+          : Array.isArray(c)
+            ? c.map(p => (p && typeof p === 'object' && (p as { type?: string }).type === 'text' ? String((p as { text?: unknown }).text ?? '') : '')).join('')
+            : '';
+      }
       if (!text.trim()) throw new RealProviderError('LLM 未返回文本内容', true);
       return toEvaluationCore(parseModelJson(text), input);
     },

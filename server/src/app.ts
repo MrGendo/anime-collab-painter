@@ -11,7 +11,7 @@ import { analyzePng } from './ai/analyzer.js';
 import { buildPrompt } from './prompts.js';
 import type { ProjectDoc, RoundRecord, Snapshot, Stage } from './types.js';
 
-export const REQUEST_TIMEOUT_MS = 60_000;   // evaluate/generate 60s 超时（§8）
+export const REQUEST_TIMEOUT_MS = Number(process.env.REQUEST_TIMEOUT_MS ?? 60_000);   // evaluate/generate 超时（§8），真实多模态模型可调大
 
 // ---------- dataURL 工具 ----------
 const PNG_PREFIX = 'data:image/png;base64,';
