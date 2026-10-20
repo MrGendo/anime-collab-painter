@@ -205,33 +205,44 @@ export function createRealProvider(opts: RealProviderOptions = {}): AIProvider {
       let text: string;
       if (llmProtocol() === 'anthropic') {
         // Anthropic messages 协议（GLM coding plan 额度端点）：system 独立字段、图片用 source 块、
-        // 无 response_format —— JSON 约束已写进 system 文本（JSON_SPEC），靠 parseModelJson 健壮解析兜底
-        const res = await fetchWithTimeout(`${llmBase()}/v1/messages`, {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            'x-api-key': String(process.env.LLM_API_KEY ?? ''),
-            'anthropic-version': '2023-06-01',
-          },
-          body: JSON.stringify({
-            model: process.env.LLM_MODEL ?? DEFAULT_LLM_MODEL,
-            max_tokens: 4096,
-            system,
-            messages: [{
-              role: 'user',
-              content: [
-                { type: 'text', text: userText },
-                { type: 'image', source: { type: 'base64', media_type: 'image/png', data: input.image.toString('base64') } },
-              ],
-            }],
-          }),
-        }, timeoutMs, 'LLM');
-        await assertOk(res, 'LLM anthropic messages');
-        const data = await res.json() as { content?: { type?: string; text?: string }[] };
-        text = (data.content ?? [])
-          .filter(p => p.type === 'text')
-          .map(p => p.text ?? '')
-          .join('');
+        // 无 response_format —— JSON 约束已写进 system 文本（JSON_SPEC），靠 parseModelJson 健壮解析兜底。
+        // 实测 glm-4.5v 输出长 JSON 偶发截断（thinking 消耗 + max_tokens），解析失败自动重采样一次。
+        const callAnthropic = async (): Promise<string> => {
+          const res = await fetchWithTimeout(`${llmBase()}/v1/messages`, {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              'x-api-key': String(process.env.LLM_API_KEY ?? ''),
+              'anthropic-version': '2023-06-01',
+            },
+            body: JSON.stringify({
+              model: process.env.LLM_MODEL ?? DEFAULT_LLM_MODEL,
+              max_tokens: 8192,
+              system,
+              messages: [{
+                role: 'user',
+                content: [
+                  { type: 'text', text: userText },
+                  { type: 'image', source: { type: 'base64', media_type: 'image/png', data: input.image.toString('base64') } },
+                ],
+              }],
+            }),
+          }, timeoutMs, 'LLM');
+          await assertOk(res, 'LLM anthropic messages');
+          const data = await res.json() as { content?: { type?: string; text?: string }[] };
+          return (data.content ?? [])
+            .filter(p => p.type === 'text')
+            .map(p => p.text ?? '')
+            .join('');
+        };
+        text = await callAnthropic();
+        try {
+          return toEvaluationCore(parseModelJson(text), input);
+        } catch (e) {
+          if (e instanceof RealProviderError && !e.message.includes('JSON')) throw e;
+          // JSON 截断/格式错 → 重采样一次（不同采样路径输出完整性不同）
+          text = await callAnthropic();
+        }
       } else {
         // OpenAI chat/completions（多模态 + response_format json_object）
         const payload = {
