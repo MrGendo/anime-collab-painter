@@ -183,6 +183,71 @@ async function readImageBody(res: Response, timeoutMs: number): Promise<Buffer> 
 /** PNG 魔数检测：契约要求 dataURL 前缀是 image/png，模型若返回其它格式需在 note 里如实说明（§10） */
 const isPng = (b: Buffer) => b.length > 4 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47;
 
+/** cogview 等模型输出尺寸与画布契约不一致时，重采样到 480x300 并重编码 PNG。
+ *  cogview 的 .png URL 实际常回 JPEG——JPEG 先经系统 sips 转 PNG（macOS 内置，零依赖），再统一双线性缩放。 */
+async function resizeToCanvas(buf: Buffer): Promise<Buffer> {
+  const { PNG } = await import('pngjs');
+  const W = 480, H = 300;
+  const isJpeg = buf.length > 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
+  let src: import('pngjs').PNG;
+  if (isJpeg) {
+    const { execFile } = await import('node:child_process');
+    const { promisify } = await import('node:util');
+    const os = await import('node:os');
+    const path = await import('node:path');
+    const fs = await import('node:fs');
+    const stamp = Date.now();
+    const tmpIn = path.join(os.tmpdir(), `tib-fix-${stamp}.jpg`);
+    const tmpOut = path.join(os.tmpdir(), `tib-fix-${stamp}.png`);
+    try {
+      fs.writeFileSync(tmpIn, buf);
+      const execFileP = promisify(execFile);
+      // sips 一次完成：格式转换 + 缩放（-z 高 宽）
+      await execFileP('/usr/bin/sips', ['-s', 'format', 'png', '-z', String(H), String(W), tmpIn, '--out', tmpOut]);
+      src = PNG.sync.read(fs.readFileSync(tmpOut));
+      return PNG.sync.write(src);
+    } finally {
+      fs.rmSync(tmpIn, { force: true });
+      fs.rmSync(tmpOut, { force: true });
+    }
+  }
+  src = PNG.sync.read(trimToIend(buf));
+  const dst = new PNG({ width: W, height: H });
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      // 映射到源坐标（中心对齐），双线性插值
+      const sx = (x + 0.5) * src.width / W - 0.5;
+      const sy = (y + 0.5) * src.height / H - 0.5;
+      const x0 = Math.max(0, Math.floor(sx)), y0 = Math.max(0, Math.floor(sy));
+      const x1 = Math.min(src.width - 1, x0 + 1), y1 = Math.min(src.height - 1, y0 + 1);
+      const fx = sx - x0, fy = sy - y0;
+      const di = (W * y + x) << 2;
+      for (let c = 0; c < 3; c++) {
+        const v00 = src.data[(src.width * y0 + x0) * 4 + c], v10 = src.data[(src.width * y0 + x1) * 4 + c];
+        const v01 = src.data[(src.width * y1 + x0) * 4 + c], v11 = src.data[(src.width * y1 + x1) * 4 + c];
+        dst.data[di + c] = Math.round(
+          v00 * (1 - fx) * (1 - fy) + v10 * fx * (1 - fy) + v01 * (1 - fx) * fy + v11 * fx * fy,
+        );
+      }
+      dst.data[di + 3] = 255;
+    }
+  }
+  return PNG.sync.write(dst);
+}
+
+/** 截掉 PNG IEND 之后的尾部字节：cogview 经 CDN 下载的流偶带附加数据，pngjs 严格校验会抛
+ *  "unrecognised content at end of stream"。JPEG 输入原样返回（由 isPng 分支处理）。 */
+function trimToIend(buf: Buffer): Buffer {
+  if (!isPng(buf)) return buf;
+  for (let i = 8; i + 8 <= buf.length; i++) {
+    if (buf[i] === 0x49 && buf[i + 1] === 0x45 && buf[i + 2] === 0x4e && buf[i + 3] === 0x44) {
+      const end = i + 8;   // IEND chunk = 4 长度 + 4 类型 + 0 数据 + 4 CRC
+      return end <= buf.length ? buf.subarray(0, end) : buf;
+    }
+  }
+  return buf;
+}
+
 export function createRealProvider(opts: RealProviderOptions = {}): AIProvider {
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   return {
@@ -306,16 +371,22 @@ export function createRealProvider(opts: RealProviderOptions = {}): AIProvider {
           note: `真实模型图生图（images/edits，scope=${input.scope}，约束：${keep[input.scope]}）：以当前画布 480x300 为底图重绘，保留性以模型实际输出为准`,
         };
       } else {
-        // 文生图兜底：IMG_EDIT_MODE 未设为 edits 时只能纯文本生成，note 必须如实写明保留性限制（§10）
+        // 文生图：IMG_EDIT_MODE 未设为 edits 时纯文本生成，note 必须如实写明保留性限制（§10）
+        // GLM cogview 系列尺寸约束：512~2880 且 16 的倍数——先按最近合法尺寸生成，再解码缩放回 480x300 契约尺寸
+        const imgModel = process.env.IMG_MODEL ?? DEFAULT_IMG_MODEL;
+        const isGlmCav = /cogview|cogview-3/i.test(imgModel);
+        const genSize = isGlmCav ? '768x512' : '480x300';   // 768x512 = 16 倍数，比例接近画布
         const res = await fetchWithTimeout(`${imgBase()}/images/generations`, {
           method: 'POST',
           headers: { 'content-type': 'application/json', authorization: bearer(process.env.IMG_API_KEY) },
-          body: JSON.stringify({ model: process.env.IMG_MODEL ?? DEFAULT_IMG_MODEL, prompt, size: '480x300' }),
+          body: JSON.stringify({ model: imgModel, prompt, size: genSize }),
         }, timeoutMs, 'IMG');
         await assertOk(res, 'IMG images/generations');
+        let imgBuf = await readImageBody(res, timeoutMs);
+        if (isGlmCav) imgBuf = await resizeToCanvas(imgBuf);   // 768x512 → 480x300（PNG 重编码）
         out = {
-          image: await readImageBody(res, timeoutMs),
-          note: `真实模型文生图（images/generations，scope=${input.scope}）：IMG_EDIT_MODE 未设为 edits，无底图参与。文生图模式：无法保证保留原图内容，仅供方向参考`,
+          image: imgBuf,
+          note: `真实模型文生图（${imgModel}，scope=${input.scope}）：文生图模式无法保证保留原图内容，结果按提示词重新创作，仅供修改方向参考`,
         };
       }
       // 契约 dataURL 前缀固定 image/png；模型若返回其它格式，不能装作没看见（§10 诚实性）

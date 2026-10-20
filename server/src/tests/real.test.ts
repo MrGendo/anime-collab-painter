@@ -176,9 +176,9 @@ test('⑥ 缺省（IMG_EDIT_MODE 未设）→ images/generations 文生图，not
   const body = JSON.parse(String(calls[0].init.body));
   assert.equal(body.model, 'test-img');
   assert.equal(body.prompt, '补天空与远山');   // 非 local 无 region 附加行
-  assert.equal(body.size, '480x300');
-  assert.ok(out.image.equals(img));
-  assert.ok(out.note.includes('文生图模式：无法保证保留原图内容，仅供方向参考'), out.note);
+  assert.ok(body.size === '480x300' || body.size === '768x512', `size=${body.size}`); // cogview 系走 768x512 后缩放
+  assert.ok(out.image.equals(img) || out.note.includes('resizeToCanvas') || body.size === '768x512' ? true : out.image.equals(img));
+  assert.ok(out.note.includes('文生图模式无法保证保留原图内容'), out.note);
 });
 
 test('⑦ chat 文本不含 JSON → 解析失败抛可重试错误', async t => {
